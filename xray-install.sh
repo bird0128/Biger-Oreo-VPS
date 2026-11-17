@@ -332,7 +332,6 @@ show_connection_info() {
     if command -v qrencode &>/dev/null; then
         local png="/etc/xray/vless-${uuid}.png"
         qrencode -o "$png" -l H -t png -- "$uri"
-        qrencode -t ANSIUTF8 -- "$uri"
         echo -e "\nQR code saved to: $png"
     else
         echo -e "\nqrencode not available — QR code generation skipped."

@@ -24,6 +24,8 @@ if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {
 $Remote = "root@$Server"
 $GitHubUrl = "https://raw.githubusercontent.com/bird0128/Biger-Oreo-VPS/main/xray-install.sh"
 
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+
 Write-Host "`n正在连接 $Remote ..." -ForegroundColor Cyan
 
 $RemoteOutput = ssh -p $Port $Remote "curl -fL '$GitHubUrl' -o /tmp/xray-install.sh && chmod 700 /tmp/xray-install.sh && echo 'GitHub 脚本下载成功' && echo '正在检查 Bash 语法...' && bash -n /tmp/xray-install.sh && echo '语法检查通过，开始自动安装...' && XRAY_SSH_PORT=$Port XRAY_AUTO=1 bash /tmp/xray-install.sh"
@@ -97,6 +99,7 @@ proxies:
     reality-opts:
       public-key: "$PublicKey"
       short-id: "$ShortId"
+      support-x25519mlkem768: true
 
 proxy-groups:
   - name: "PROXY"
@@ -110,6 +113,22 @@ rules:
 "@
 
 $Yaml | Set-Content -Path $ConfigPath -Encoding UTF8
+
+
+$QrPath = Join-Path $PSScriptRoot "biger-oreo-qr.png"
+$RemoteQrPath = "/etc/xray/vless-$UUID.png"
+
+Write-Host "`n正在下载节点二维码..." -ForegroundColor Cyan
+
+scp -P $Port "${Remote}:$RemoteQrPath" $QrPath
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "二维码下载成功：$QrPath" -ForegroundColor Green
+    Start-Process $QrPath
+}
+else {
+    Write-Host "二维码下载失败，请检查 SSH/SCP 连接。" -ForegroundColor Red
+}
 
 Write-Host "`nClash 配置已生成：$ConfigPath" -ForegroundColor Green
 
