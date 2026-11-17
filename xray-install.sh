@@ -243,27 +243,44 @@ enable_bbr() {
 check_sni_target() {
     local sni="$1" result http_ver code redirect redirect_host answer
     local problems=()
+
     echo -e "\n>>> Checking SNI target https://$sni (TLS 1.3, HTTP/2, no redirect)..."
+
     result="$(curl -sS -o /dev/null --tlsv1.3 --http2 --connect-timeout 5 --max-time 10 \
         -w '%{http_version} %{http_code} %{redirect_url}' "https://$sni/" 2>/dev/null || true)"
+
     read -r http_ver code redirect <<< "$result"
+
     if [[ -z "$code" || "$code" == "000" ]]; then
         problems+=("no TLS 1.3 connection (site unreachable or TLS 1.3 not supported)")
     else
         [[ "$http_ver" == "2" ]] || problems+=("no HTTP/2 support (got HTTP/$http_ver)")
+
         if [[ -n "${redirect:-}" ]]; then
-            redirect_host="${redirect#*://}"; redirect_host="${redirect_host%%[/:?]*}"
+            redirect_host="${redirect#*://}"
+            redirect_host="${redirect_host%%[/:?]*}"
             [[ "$redirect_host" == "$sni" ]] || problems+=("redirects to another domain: $redirect_host")
         fi
     fi
+
     if (( ${#problems[@]} == 0 )); then
         echo ">>> SNI target looks good."
         return 0
     fi
+
     echo "Warning: $sni does not meet REALITY target requirements:" >&2
     printf '   - %s\n' "${problems[@]}" >&2
+
+    if [[ "${XRAY_AUTO:-0}" == "1" ]]; then
+        echo "Automatic installation aborted because the SNI target check failed." >&2
+        exit 1
+    fi
+
     read -rp "Continue anyway? [y/N]: " answer
-    [[ "$answer" =~ ^[Yy]$ ]] || { echo "Aborted. Choose another SNI domain." >&2; exit 1; }
+    [[ "$answer" =~ ^[Yy]$ ]] || {
+        echo "Aborted. Choose another SNI domain." >&2
+        exit 1
+    }
 }
 
 # Build a VLESS+REALITY URI and display it along with a QR code
@@ -303,71 +320,106 @@ new_install() {
     echo "Welcome to the Xray VLESS+REALITY installer!"
     echo ""
 
-    # ---- Public IP ----
+      # ---- Public IP ----
     local server
     local detected input
     detected="$(detect_public_ip)"
-    if [[ -n "$detected" ]]; then
-        echo "Detected public IP: $detected"
-        read -rp "Server address for clients (IP or domain) [$detected]: " input
-        server="${input:-$detected}"
+
+    if [[ "${XRAY_AUTO:-0}" == "1" ]]; then
+        if [[ -z "$detected" ]]; then
+            echo "Unable to auto-detect public IP. Automatic installation aborted." >&2
+            exit 1
+        fi
+        server="$detected"
+        echo "Automatic mode: server address set to $server"
     else
-        echo "Unable to auto-detect public IP." >&2
-        read -rp "Enter the server's public IP or domain: " server
+        if [[ -n "$detected" ]]; then
+            echo "Detected public IP: $detected"
+            read -rp "Server address for clients (IP or domain) [$detected]: " input
+            server="${input:-$detected}"
+        else
+            echo "Unable to auto-detect public IP." >&2
+            read -rp "Enter the server's public IP or domain: " server
+        fi
     fi
+
     [[ -z "$server" ]] && { echo "Server address is required." >&2; exit 1; }
 
     # ---- SNI domain (required) ----
     local sni
-    echo ""
-    read -rp "Enter the SNI domain (e.g. www.cloudflare.com): " sni
-    while [[ -z "$sni" ]]; do
-        read -rp "SNI domain cannot be empty. Try again: " sni
-    done
 
-    # ---- DNS selection ----
-    echo ""
-    echo "Select a DNS server for Xray:"
-    echo "   1) Current system resolvers"
-    echo "   2) Google        (8.8.8.8, 8.8.4.4)"
-    echo "   3) Cloudflare    (1.1.1.1, 1.0.0.1)"
-    echo "   4) OpenDNS       (208.67.222.222, 208.67.220.220)"
-    echo "   5) Quad9         (9.9.9.9, 149.112.112.112)"
-    echo "   6) AdGuard DNS   (94.140.14.14, 94.140.15.15)"
+    if [[ "${XRAY_AUTO:-0}" == "1" ]]; then
+        sni="aws.amazon.com"
+        echo "Automatic mode: REALITY SNI set to $sni"
+    else
+        echo ""
+        read -rp "Enter the SNI domain (e.g. www.cloudflare.com): " sni
+        while [[ -z "$sni" ]]; do
+            read -rp "SNI domain cannot be empty. Try again: " sni
+        done
+    fi
+
+        # ---- DNS selection ----
     local dns_choice dns1 dns2
-    read -rp "DNS [1-6, default 2]: " dns_choice
-    case "${dns_choice:-2}" in
-        1)
-            dns1="$(grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' || true)"
-            dns2="$(grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk 'NR==2{print $2}' || true)"
-            if [[ -z "$dns1" ]]; then
-                dns1="8.8.8.8"; dns2="8.8.4.4"
-                echo "No system resolvers found. Falling back to Google DNS."
-            fi
-            ;;
-        3)  dns1="1.1.1.1";         dns2="1.0.0.1" ;;
-        4)  dns1="208.67.222.222";   dns2="208.67.220.220" ;;
-        5)  dns1="9.9.9.9";         dns2="149.112.112.112" ;;
-        6)  dns1="94.140.14.14";    dns2="94.140.15.15" ;;
-        *)  dns1="8.8.8.8";         dns2="8.8.4.4" ;;
-    esac
+
+    if [[ "${XRAY_AUTO:-0}" == "1" ]]; then
+        dns1="1.1.1.1"
+        dns2="8.8.8.8"
+        echo "Automatic mode: DNS set to $dns1, $dns2"
+    else
+        echo ""
+        echo "Select a DNS server for Xray:"
+        echo "   1) Current system resolvers"
+        echo "   2) Google        (8.8.8.8, 8.8.4.4)"
+        echo "   3) Cloudflare    (1.1.1.1, 1.0.0.1)"
+        echo "   4) OpenDNS       (208.67.222.222, 208.67.220.220)"
+        echo "   5) Quad9         (9.9.9.9, 149.112.112.112)"
+        echo "   6) AdGuard DNS   (94.140.14.14, 94.140.15.15)"
+
+        read -rp "DNS [1-6, default 2]: " dns_choice
+
+        case "${dns_choice:-2}" in
+            1)
+                dns1="$(grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' || true)"
+                dns2="$(grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk 'NR==2{print $2}' || true)"
+                if [[ -z "$dns1" ]]; then
+                    dns1="8.8.8.8"
+                    dns2="8.8.4.4"
+                    echo "No system resolvers found. Falling back to Google DNS."
+                fi
+                ;;
+            3) dns1="1.1.1.1"; dns2="1.0.0.1" ;;
+            4) dns1="208.67.222.222"; dns2="208.67.220.220" ;;
+            5) dns1="9.9.9.9"; dns2="149.112.112.112" ;;
+            6) dns1="94.140.14.14"; dns2="94.140.15.15" ;;
+            *) dns1="8.8.8.8"; dns2="8.8.4.4" ;;
+        esac
+    fi
 
     # ---- Transport ----
     local transport_choice network xhttp_path=""
-    echo ""
-    echo "Select a transport:"
-    echo "   1) TCP + XTLS Vision  (default; supported by all client apps)"
-    echo "   2) XHTTP              (newer, splits traffic into HTTP requests and is harder"
-    echo "                          to fingerprint; check that your client app supports it)"
-    read -rp "Transport [1-2, default 1]: " transport_choice
-    if [[ "${transport_choice:-1}" == "2" ]]; then
-        network="xhttp"
-        xhttp_path="/$(openssl rand -hex 4 2>/dev/null || generate_short_id)"
-    else
+
+    if [[ "${XRAY_AUTO:-0}" == "1" ]]; then
         network="tcp"
+        echo "Automatic mode: transport set to TCP + XTLS Vision"
+    else
+        echo ""
+        echo "Select a transport:"
+        echo "   1) TCP + XTLS Vision  (default; supported by all client apps)"
+        echo "   2) XHTTP              (newer, splits traffic into HTTP requests and is harder"
+        echo "                          to fingerprint; check that your client app supports it)"
+
+        read -rp "Transport [1-2, default 1]: " transport_choice
+
+        if [[ "${transport_choice:-1}" == "2" ]]; then
+            network="xhttp"
+            xhttp_path="/$(openssl rand -hex 4 2>/dev/null || generate_short_id)"
+        else
+            network="tcp"
+        fi
     fi
 
-    # ---- Confirmation summary ----
+        # ---- Confirmation summary ----
     echo ""
     echo "Xray VLESS+REALITY will be installed with these settings:"
     echo ""
@@ -376,7 +428,12 @@ new_install() {
     echo "   DNS servers: $dns1${dns2:+, $dns2}"
     echo "   Transport  : $network"
     echo ""
-    read -rp "Press Enter to continue or Ctrl+C to abort..."
+
+    if [[ "${XRAY_AUTO:-0}" == "1" ]]; then
+        echo "Automatic mode: skipping installation confirmation."
+    else
+        read -rp "Press Enter to continue or Ctrl+C to abort..."
+    fi
 
     # ---- Install system packages ----
     install_deps
@@ -450,6 +507,9 @@ new_install() {
     # ---- Write config.json (with DNS section) ----
     local dns_json="\"$dns1\""
     [[ -n "$dns2" ]] && dns_json="\"$dns1\", \"$dns2\""
+    local sni_json target_json
+    sni_json="$(jq -Rn --arg value "$sni" '$value')"
+    target_json="$(jq -Rn --arg value "$sni" '$value + ":443"')"
 
     # Transport-specific parts: Vision flow for TCP, path/mode for XHTTP
     local client_json xhttp_json=""
@@ -488,10 +548,10 @@ new_install() {
         "security": "reality",
         "realitySettings": {
           "show": false,
-          "target": "$sni:443",
+          "target": $target_json,
           "xver": 0,
           "serverNames": [
-            "$sni"
+            $sni_json
           ],
           "privateKey": "$private_key",
           "shortIds": [
@@ -777,6 +837,12 @@ if [[ "$EUID" -ne 0 ]]; then
 fi
 
 if is_xray_installed; then
+    if [[ "${XRAY_AUTO:-0}" == "1" ]]; then
+        echo "Xray is already installed on this server." >&2
+        echo "Automatic installation refused to avoid overwriting the existing configuration." >&2
+        exit 1
+    fi
+
     ensure_xray_autostart
     offer_private_block
     manage_menu
