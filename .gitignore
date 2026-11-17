@@ -28,4 +28,5 @@ Thumbs.db
 
 # Backup files
 *.bak
-*.backup 
+*.backup
+biger-oreo.yaml

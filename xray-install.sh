@@ -223,6 +223,33 @@ install_deps() {
     fi
 }
 
+# Configure UFW rules for SSH and Xray
+configure_firewall() {
+    if ! command -v ufw >/dev/null 2>&1; then
+        echo ">>> UFW not installed; skipping firewall configuration."
+        return 0
+    fi
+
+    local ssh_port="${XRAY_SSH_PORT:-22}"
+
+    if ! [[ "$ssh_port" =~ ^[0-9]+$ ]] || \
+       (( ssh_port < 1 || ssh_port > 65535 )); then
+        echo "Error: invalid SSH port: $ssh_port" >&2
+        return 1
+    fi
+
+    echo -e "\n>>> Configuring UFW firewall rules..."
+
+    ufw allow "$ssh_port/tcp" || return 1
+    ufw allow 443/tcp || return 1
+
+    if ufw status | grep -q "^Status: active"; then
+        echo ">>> UFW is active. SSH port $ssh_port and Xray port 443 are allowed."
+    else
+        echo ">>> UFW is inactive. Rules added but firewall was not enabled."
+    fi
+}
+
 # Enable TCP BBR congestion control for better throughput
 enable_bbr() {
     if sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null | grep -q '^bbr$'; then
@@ -300,6 +327,7 @@ show_connection_info() {
     echo ""
     echo "Generated VLESS+REALITY URI (copy or scan):"
     echo "$uri"
+    echo "BIGGER_OREO_URI=$uri"
 
     if command -v qrencode &>/dev/null; then
         local png="/etc/xray/vless-${uuid}.png"
@@ -437,6 +465,7 @@ new_install() {
 
     # ---- Install system packages ----
     install_deps
+    configure_firewall
     enable_bbr
 
     # ---- Download latest Xray-core binary ----
