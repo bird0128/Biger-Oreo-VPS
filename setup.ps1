@@ -24,7 +24,7 @@ $IsAdmin = $Principal.IsInRole(
 if (-not $IsAdmin) {
     Write-Host "正在申请管理员权限..." -ForegroundColor Yellow
 
-    $ScriptPath = $MyInvocation.MyCommand.Path
+    $ScriptPath = $PSCommandPath
 
     Start-Process powershell.exe `
         -Verb RunAs `
