@@ -81,11 +81,25 @@ if (-not $PublicKey -or -not $ShortId -or -not $SNI) {
     exit 1
 }
 
+try {
+    $GeoInfo = Invoke-RestMethod "https://ipwho.is/$NodeServer" -TimeoutSec 10 -ErrorAction Stop
+    $CountryCode = $GeoInfo.country_code
+}
+catch {
+    $CountryCode = "UNKNOWN"
+}
+
+if (-not $CountryCode) {
+    $CountryCode = "UNKNOWN"
+}
+
+$NodeName = "$CountryCode-$NodeServer"
+
 $ConfigPath = Join-Path $PSScriptRoot "biger-oreo.yaml"
 
 $Yaml = @"
 proxies:
-  - name: "Biger-Oreo"
+  - name: "$NodeName"
     type: vless
     server: "$NodeServer"
     port: $NodePort
@@ -105,7 +119,7 @@ proxy-groups:
   - name: "PROXY"
     type: select
     proxies:
-      - "Biger-Oreo"
+      - "$NodeName"
       - DIRECT
 
 rules:
