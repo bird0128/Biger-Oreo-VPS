@@ -7,6 +7,7 @@ proxies:
     tls: true
     servername: aws.amazon.com
     client-fingerprint: chrome
+    ip-version: ipv4
     network: tcp
     reality-opts:
       public-key: mSv5l1HOorH54pzY5QuPQbXr9wEnsd36Ux2XBe73znY
