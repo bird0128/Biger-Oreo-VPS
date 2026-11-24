@@ -6,10 +6,11 @@ proxies:
     uuid: 74fcc44a-2d24-4740-9780-38fbbd91918d
     tls: true
     servername: aws.amazon.com
+    client-fingerprint: chrome
     network: tcp
     reality-opts:
       public-key: mSv5l1HOorH54pzY5QuPQbXr9wEnsd36Ux2XBe73znY
-      short-id: c87eb2
+      short-id: "c87eb2"
     flow: xtls-rprx-vision
     udp: true
 proxy-groups:
