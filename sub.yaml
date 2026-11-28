@@ -1,17 +1,17 @@
 proxies:
-  - name: "US-45.77.120.135"
+  - name: "US-154.29.152.118"
     type: vless
-    server: 45.77.120.135
+    server: 154.29.152.118
     port: 443
-    uuid: 74fcc44a-2d24-4740-9780-38fbbd91918d
+    uuid: 9c1801ac-6d91-4081-90f5-434b559b29e2
     tls: true
     servername: aws.amazon.com
     client-fingerprint: chrome
     ip-version: ipv4
     network: tcp
     reality-opts:
-      public-key: mSv5l1HOorH54pzY5QuPQbXr9wEnsd36Ux2XBe73znY
-      short-id: "c87eb2"
+      public-key: 6P2vdbRpIy_PM9rx_-y6OVpzvBj1InYHTQA974yE0mo
+      short-id: "8bbfa40b"
       support-x25519mlkem768: true
     flow: xtls-rprx-vision
     udp: true
@@ -19,6 +19,6 @@ proxy-groups:
   - name: "Biger-Oreo"
     type: select
     proxies:
-      - "US-45.77.120.135"
+      - "US-154.29.152.118"
 rules:
   - MATCH,DIRECT
